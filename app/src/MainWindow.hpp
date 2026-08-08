@@ -2,7 +2,10 @@
 
 #include <QMainWindow>
 
+#include <kestrel/model/ModelSpec.hpp>
+
 class MainWindow final : public QMainWindow {
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(const kestrel::model::BoxSpec& boxSpec,
+                        QWidget* parent = nullptr);
 };
