@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <QPoint>
 #include <QWidget>
@@ -35,6 +36,9 @@ public:
     bool canExtrudeSelection();
     bool extrudeSelected(double distanceMm);
 
+    void pushUndoState();
+    bool undoLastEdit();
+
     bool exportStep(const std::string& path) const;
     bool exportStl(const std::string& path) const;
 
@@ -66,6 +70,7 @@ private:
     TopoDS_Shape currentShape_;
     TopoDS_Face selectedFace_;
     TopoDS_Face sketchFace_;
+    std::vector<TopoDS_Shape> undoStack_;
 
     QPoint lastMousePosition_;
     bool isShaded_ = true;
