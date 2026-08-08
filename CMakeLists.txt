@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(Kestrel VERSION 0.0.2 LANGUAGES CXX OBJCXX)
+project(Kestrel VERSION 0.0.3 LANGUAGES CXX OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# M0/M1 target: Apple Silicon macOS.
+# Current target: Apple Silicon macOS.
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "Build architectures" FORCE)
 
 set(CMAKE_AUTOMOC ON)
