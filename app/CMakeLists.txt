@@ -22,10 +22,16 @@ set(KESTREL_BUNDLE_RESOURCES
     "${CMAKE_CURRENT_BINARY_DIR}/kestrel.app/Contents/Resources"
 )
 
-add_custom_command(TARGET kestrel POST_BUILD
+# Keep the Haskell-generated model IR in the application bundle synchronized
+# even when only Haskell sources change and the C++ executable does not relink.
+add_custom_target(kestrel_bundle_model ALL
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${KESTREL_BUNDLE_RESOURCES}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${KESTREL_MODEL_IR}"
             "${KESTREL_BUNDLE_RESOURCES}/model.json"
-    COMMENT "Embedding Haskell-generated model IR in Kestrel.app"
+    DEPENDS
+        kestrel
+        kestrel_model_ir
+    COMMENT "Synchronizing Haskell-generated model IR into Kestrel.app"
+    VERBATIM
 )
