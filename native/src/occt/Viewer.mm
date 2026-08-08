@@ -187,6 +187,7 @@ bool Viewer::exportStl(const std::string& path) const
     }
 
     StlAPI_Writer writer;
+    writer.ASCIIMode() = Standard_False;
     return writer.Write(currentShape_, path.c_str());
 }
 
