@@ -1,6 +1,7 @@
 #include "MainWindow.hpp"
 
 #include <QFileDialog>
+#include <QKeyCombination>
 #include <QKeySequence>
 #include <QMessageBox>
 #include <QShortcut>
@@ -16,12 +17,16 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     viewer_ = new kestrel::occt::Viewer(model, this);
     setCentralWidget(viewer_);
 
-    auto* displayModeShortcut = new QShortcut(QKeySequence(Qt::Key_P), this);
+    auto* displayModeShortcut = new QShortcut(
+        QKeySequence(QKeyCombination(Qt::NoModifier, Qt::Key_P)),
+        this);
     displayModeShortcut->setContext(Qt::ApplicationShortcut);
     connect(displayModeShortcut, &QShortcut::activated,
             viewer_, &kestrel::occt::Viewer::toggleDisplayMode);
 
-    auto* exportShortcut = new QShortcut(QKeySequence(Qt::META | Qt::Key_E), this);
+    auto* exportShortcut = new QShortcut(
+        QKeySequence(QKeyCombination(Qt::MetaModifier, Qt::Key_E)),
+        this);
     exportShortcut->setContext(Qt::ApplicationShortcut);
     connect(exportShortcut, &QShortcut::activated,
             this, &MainWindow::exportModel);
