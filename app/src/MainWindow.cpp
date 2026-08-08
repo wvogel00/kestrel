@@ -1,10 +1,11 @@
 #include "MainWindow.hpp"
 
+#include <QAction>
 #include <QFileDialog>
-#include <QKeyCombination>
 #include <QKeySequence>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
-#include <QShortcut>
 
 #include <kestrel/occt/Viewer.hpp>
 
@@ -17,19 +18,24 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     viewer_ = new kestrel::occt::Viewer(model, this);
     setCentralWidget(viewer_);
 
-    auto* displayModeShortcut = new QShortcut(
-        QKeySequence(QKeyCombination(Qt::NoModifier, Qt::Key_P)),
-        this);
-    displayModeShortcut->setContext(Qt::ApplicationShortcut);
-    connect(displayModeShortcut, &QShortcut::activated,
-            viewer_, &kestrel::occt::Viewer::toggleDisplayMode);
+    auto* fileMenu = menuBar()->addMenu("File");
+    auto* viewMenu = menuBar()->addMenu("View");
 
-    auto* exportShortcut = new QShortcut(
-        QKeySequence(QKeyCombination(Qt::MetaModifier, Qt::Key_E)),
-        this);
-    exportShortcut->setContext(Qt::ApplicationShortcut);
-    connect(exportShortcut, &QShortcut::activated,
+    auto* exportAction = new QAction("Export...", this);
+    exportAction->setShortcut(QKeySequence("Meta+E"));
+    exportAction->setShortcutContext(Qt::WindowShortcut);
+    fileMenu->addAction(exportAction);
+    addAction(exportAction);
+    connect(exportAction, &QAction::triggered,
             this, &MainWindow::exportModel);
+
+    auto* displayModeAction = new QAction("Toggle Wireframe/Shaded", this);
+    displayModeAction->setShortcut(QKeySequence(Qt::Key_P));
+    displayModeAction->setShortcutContext(Qt::WindowShortcut);
+    viewMenu->addAction(displayModeAction);
+    addAction(displayModeAction);
+    connect(displayModeAction, &QAction::triggered,
+            viewer_, &kestrel::occt::Viewer::toggleDisplayMode);
 }
 
 void MainWindow::exportModel()
