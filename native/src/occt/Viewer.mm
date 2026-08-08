@@ -8,6 +8,7 @@
 #include <QResizeEvent>
 #include <QWheelEvent>
 
+#include <AIS_DisplayMode.hxx>
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
@@ -17,6 +18,8 @@
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <Cocoa_Window.hxx>
 #include <OpenGl_GraphicDriver.hxx>
+#include <Prs3d_Drawer.hxx>
+#include <Quantity_NameOfColor.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -53,6 +56,8 @@ void Viewer::initializeOcct()
     viewer_->SetLightOn();
 
     context_ = new AIS_InteractiveContext(viewer_);
+    context_->SetDisplayMode(AIS_Shaded, Standard_False);
+
     view_ = viewer_->CreateView();
 
     NSView* nativeView = reinterpret_cast<NSView*>(winId());
@@ -125,6 +130,12 @@ void Viewer::displayModel(const kestrel::model::NodeSpec& model)
     }
 
     const Handle(AIS_Shape) presentation = new AIS_Shape(shape);
+
+    // CAD-style shaded presentation: filled faces with visible boundaries.
+    presentation->SetDisplayMode(AIS_Shaded);
+    presentation->SetColor(Quantity_NOC_LIGHTSTEELBLUE);
+    presentation->Attributes()->SetFaceBoundaryDraw(Standard_True);
+
     context_->Display(presentation, Standard_True);
     view_->FitAll();
     view_->ZFitAll();
