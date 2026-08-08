@@ -1,5 +1,6 @@
 add_library(kestrel_native STATIC
     src/occt/Viewer.mm
+    src/occt/ViewerUndo.mm
 )
 
 target_include_directories(kestrel_native
