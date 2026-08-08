@@ -32,7 +32,7 @@ public:
     void exitSketchMode();
     bool isSketchMode() const { return sketchMode_; }
 
-    bool canExtrudeSelection() const;
+    bool canExtrudeSelection();
     bool extrudeSelected(double distanceMm);
 
     bool exportStep(const std::string& path) const;
