@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 
 #include <kestrel/model/ModelSpec.hpp>
@@ -15,6 +16,11 @@ public:
 
 private:
     void exportModel();
+    void handleAxisShortcut(char axis);
 
     kestrel::occt::Viewer* viewer_ = nullptr;
+
+    QElapsedTimer axisShortcutTimer_;
+    char lastAxisShortcut_ = '\0';
+    static constexpr qint64 kAxisDoublePressMs = 400;
 };
