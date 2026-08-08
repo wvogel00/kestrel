@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPaintEngine>
 #include <QPaintEvent>
@@ -142,6 +143,19 @@ void Viewer::displayModel(const kestrel::model::NodeSpec& model)
     view_->Redraw();
 }
 
+void Viewer::toggleDisplayMode()
+{
+    if (context_.IsNull() || view_.IsNull()) {
+        return;
+    }
+
+    isShaded_ = !isShaded_;
+    context_->SetDisplayMode(
+        isShaded_ ? AIS_Shaded : AIS_WireFrame,
+        Standard_True);
+    view_->Redraw();
+}
+
 void Viewer::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
@@ -162,6 +176,7 @@ void Viewer::resizeEvent(QResizeEvent* event)
 void Viewer::mousePressEvent(QMouseEvent* event)
 {
     lastMousePosition_ = event->position().toPoint();
+    setFocus(Qt::MouseFocusReason);
 
     if (event->button() == Qt::LeftButton && !context_.IsNull()) {
         context_->MoveTo(
@@ -200,6 +215,17 @@ void Viewer::wheelEvent(QWheelEvent* event)
     const int delta = event->angleDelta().y();
     const double factor = delta > 0 ? 0.8 : 1.25;
     view_->SetZoom(factor, Standard_True);
+}
+
+void Viewer::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_P && !event->isAutoRepeat()) {
+        toggleDisplayMode();
+        event->accept();
+        return;
+    }
+
+    QWidget::keyPressEvent(event);
 }
 
 } // namespace kestrel::occt
