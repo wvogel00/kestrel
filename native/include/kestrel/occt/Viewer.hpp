@@ -33,6 +33,19 @@ public:
     void exitSketchMode();
     bool isSketchMode() const { return sketchMode_; }
 
+    // Interactive sketch helpers. MainWindow installs an event filter while
+    // sketch mode is active so vertex snapping and sketch-edge selection can
+    // take precedence over normal viewer navigation.
+    void enableSketchInteraction();
+    void disableSketchInteraction();
+    bool handleSketchMouseMove(const QPoint& point);
+    bool handleSketchMousePress(const QPoint& point);
+
+    // Fusion-like first-pass dimensional constraint workflow:
+    // select a rectangle edge -> D -> enter length.
+    double selectedSketchEdgeLength();
+    bool setSelectedSketchDimension(double lengthMm);
+
     bool canExtrudeSelection();
     bool extrudeSelected(double distanceMm);
 
@@ -61,6 +74,11 @@ private:
     bool createRectangleSketch(const gp_Pnt& first, const gp_Pnt& second);
     void clearSketchProfile();
 
+    bool snappedSketchPoint(const QPoint& point, gp_Pnt& result);
+    bool selectedSketchEdgeInfo(bool& horizontal, double& lengthMm);
+    bool rebuildSketchRectangle();
+    void activateSketchEdgeSelection();
+
     Handle(V3d_Viewer) viewer_;
     Handle(V3d_View) view_;
     Handle(AIS_InteractiveContext) context_;
@@ -79,6 +97,13 @@ private:
     bool selectedSketchProfile_ = false;
     gp_Ax3 sketchAxes_;
     std::optional<gp_Pnt> sketchFirstPoint_;
+
+    // Rectangle sketch coordinates in the selected face's local U/V basis.
+    bool hasSketchRectangle_ = false;
+    double sketchU1_ = 0.0;
+    double sketchV1_ = 0.0;
+    double sketchU2_ = 0.0;
+    double sketchV2_ = 0.0;
 };
 
 } // namespace kestrel::occt
