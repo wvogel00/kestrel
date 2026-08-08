@@ -22,11 +22,11 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     setCentralWidget(viewer_);
 
     auto* fileMenu = menuBar()->addMenu("File");
+    auto* editMenu = menuBar()->addMenu("Edit");
     auto* viewMenu = menuBar()->addMenu("View");
     auto* createMenu = menuBar()->addMenu("Create");
 
     auto* exportAction = new QAction("Export...", this);
-    // On macOS, Qt maps the portable Ctrl modifier to the Command key.
     exportAction->setShortcut(QKeySequence("Ctrl+E"));
     exportAction->setShortcutContext(Qt::ApplicationShortcut);
     fileMenu->addAction(exportAction);
@@ -34,6 +34,20 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     connect(exportAction, &QAction::triggered, this, [this] {
         qInfo() << "Kestrel shortcut: Export";
         exportModel();
+    });
+
+    auto* undoAction = new QAction("Undo", this);
+    undoAction->setShortcut(QKeySequence::Undo);
+    undoAction->setShortcutContext(Qt::ApplicationShortcut);
+    editMenu->addAction(undoAction);
+    addAction(undoAction);
+    connect(undoAction, &QAction::triggered, this, [this] {
+        qInfo() << "Kestrel shortcut: Undo";
+        if (viewer_->undoLastEdit()) {
+            statusBar()->showMessage("Undid last geometry edit", 3000);
+        } else {
+            statusBar()->showMessage("Nothing to undo", 2000);
+        }
     });
 
     auto* displayModeAction = new QAction("Toggle Wireframe/Shaded", this);
@@ -100,8 +114,6 @@ void MainWindow::handleAxisShortcut(char axis)
     if (isDoublePress) {
         qInfo() << "Kestrel view:" << axis << "negative";
         viewer_->setAxisView(axis, false);
-
-        // Consume the pair so a third press starts a new +axis sequence.
         axisShortcutTimer_.invalidate();
         lastAxisShortcut_ = '\0';
         return;
@@ -170,7 +182,10 @@ void MainWindow::extrudeSelection()
         return;
     }
 
+    viewer_->pushUndoState();
+
     if (!viewer_->extrudeSelected(distanceMm)) {
+        viewer_->undoLastEdit();
         QMessageBox::critical(
             this,
             "Extrude failed",
