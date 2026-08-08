@@ -1,5 +1,6 @@
 #include <kestrel/occt/Viewer.hpp>
 
+#include <cmath>
 #include <stdexcept>
 
 #include <QMouseEvent>
@@ -11,13 +12,18 @@
 #include <AIS_DisplayMode.hxx>
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
+#include <BRepAdaptor_Surface.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
+#include <BRepPrimAPI_MakePrism.hxx>
 #include <Cocoa_Window.hxx>
+#include <GeomAbs_SurfaceType.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <OpenGl_GraphicDriver.hxx>
 #include <Prs3d_Drawer.hxx>
@@ -25,11 +31,34 @@
 #include <STEPControl_StepModelType.hxx>
 #include <STEPControl_Writer.hxx>
 #include <StlAPI_Writer.hxx>
+#include <TopAbs_Orientation.hxx>
+#include <TopAbs_ShapeEnum.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Wire.hxx>
 #include <V3d_TypeOfOrientation.hxx>
+#include <gp_Dir.hxx>
+#include <gp_Pln.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
 namespace kestrel::occt {
+namespace {
+
+gp_Dir outwardNormal(const TopoDS_Face& face)
+{
+    BRepAdaptor_Surface surface(face, Standard_True);
+    if (surface.GetType() != GeomAbs_Plane) {
+        throw std::runtime_error("Only planar faces are supported in this prototype");
+    }
+
+    gp_Dir normal = surface.Plane().Axis().Direction();
+    if (face.Orientation() == TopAbs_REVERSED) {
+        normal.Reverse();
+    }
+    return normal;
+}
+
+} // namespace
 
 Viewer::Viewer(const kestrel::model::NodeSpec& model, QWidget* parent)
     : QWidget(parent)
@@ -140,6 +169,34 @@ void Viewer::displayModel(const kestrel::model::NodeSpec& model)
     presentation_->Attributes()->SetFaceBoundaryDraw(Standard_True);
 
     context_->Display(presentation_, AIS_Shaded, 0, Standard_True);
+    context_->Activate(presentation_, AIS_Shape::SelectionMode(TopAbs_FACE));
+
+    view_->FitAll();
+    view_->ZFitAll();
+    view_->Redraw();
+}
+
+void Viewer::refreshMainPresentation()
+{
+    if (presentation_.IsNull()) {
+        presentation_ = new AIS_Shape(currentShape_);
+        presentation_->SetColor(Quantity_NOC_LIGHTSTEELBLUE);
+        presentation_->Attributes()->SetFaceBoundaryDraw(Standard_True);
+        context_->Display(
+            presentation_,
+            isShaded_ ? AIS_Shaded : AIS_WireFrame,
+            0,
+            Standard_True);
+    } else {
+        presentation_->SetShape(currentShape_);
+        context_->Redisplay(presentation_, Standard_True);
+        context_->SetDisplayMode(
+            presentation_,
+            isShaded_ ? AIS_Shaded : AIS_WireFrame,
+            Standard_True);
+    }
+
+    context_->Activate(presentation_, AIS_Shape::SelectionMode(TopAbs_FACE));
     view_->FitAll();
     view_->ZFitAll();
     view_->Redraw();
@@ -187,6 +244,252 @@ void Viewer::setAxisView(char axis, bool positive)
     view_->FitAll();
     view_->ZFitAll();
     view_->Redraw();
+}
+
+bool Viewer::updateSelectedFaceFromContext()
+{
+    selectedFace_.Nullify();
+    selectedSketchProfile_ = false;
+
+    if (context_.IsNull() || context_->NbSelected() == 0) {
+        return false;
+    }
+
+    const Handle(AIS_InteractiveObject) selectedObject =
+        context_->SelectedInteractive();
+
+    if (!sketchPresentation_.IsNull()
+        && selectedObject == sketchPresentation_) {
+        selectedSketchProfile_ = !sketchFace_.IsNull();
+        return selectedSketchProfile_;
+    }
+
+    const TopoDS_Shape selectedShape = context_->SelectedShape();
+    if (selectedShape.IsNull() || selectedShape.ShapeType() != TopAbs_FACE) {
+        return false;
+    }
+
+    selectedFace_ = TopoDS::Face(selectedShape);
+    return true;
+}
+
+bool Viewer::beginSketchOnSelectedFace()
+{
+    if (selectedFace_.IsNull()) {
+        if (!updateSelectedFaceFromContext() || selectedFace_.IsNull()) {
+            return false;
+        }
+    }
+
+    BRepAdaptor_Surface surface(selectedFace_, Standard_True);
+    if (surface.GetType() != GeomAbs_Plane) {
+        return false;
+    }
+
+    sketchAxes_ = surface.Plane().Position();
+    if (selectedFace_.Orientation() == TopAbs_REVERSED) {
+        sketchAxes_.ZReverse();
+    }
+
+    clearSketchProfile();
+    sketchFirstPoint_.reset();
+    sketchMode_ = true;
+
+    // Keep the model visible but make sketch input unambiguous.
+    context_->ClearSelected(Standard_True);
+    view_->Redraw();
+    return true;
+}
+
+void Viewer::exitSketchMode()
+{
+    sketchMode_ = false;
+    sketchFirstPoint_.reset();
+    view_->Redraw();
+}
+
+bool Viewer::screenPointOnSketchPlane(const QPoint& point, gp_Pnt& result) const
+{
+    if (!sketchMode_ || view_.IsNull()) {
+        return false;
+    }
+
+    Standard_Real x = 0.0;
+    Standard_Real y = 0.0;
+    Standard_Real z = 0.0;
+    Standard_Real vx = 0.0;
+    Standard_Real vy = 0.0;
+    Standard_Real vz = 0.0;
+
+    view_->ConvertWithProj(
+        point.x(), point.y(),
+        x, y, z,
+        vx, vy, vz);
+
+    const gp_Pnt rayOrigin(x, y, z);
+    gp_Vec rayDirection(vx, vy, vz);
+    if (rayDirection.SquareMagnitude() < 1.0e-18) {
+        return false;
+    }
+    rayDirection.Normalize();
+
+    const gp_Pnt planeOrigin = sketchAxes_.Location();
+    const gp_Vec planeNormal(sketchAxes_.Direction());
+    const double denominator = rayDirection.Dot(planeNormal);
+    if (std::abs(denominator) < 1.0e-9) {
+        return false;
+    }
+
+    const gp_Vec originToPlane(rayOrigin, planeOrigin);
+    const double t = originToPlane.Dot(planeNormal) / denominator;
+    result = rayOrigin.Translated(rayDirection * t);
+    return true;
+}
+
+bool Viewer::createRectangleSketch(const gp_Pnt& first, const gp_Pnt& second)
+{
+    const gp_Pnt origin = sketchAxes_.Location();
+    const gp_Vec xAxis(sketchAxes_.XDirection());
+    const gp_Vec yAxis(sketchAxes_.YDirection());
+
+    const gp_Vec toFirst(origin, first);
+    const gp_Vec toSecond(origin, second);
+
+    const double u1 = toFirst.Dot(xAxis);
+    const double v1 = toFirst.Dot(yAxis);
+    const double u2 = toSecond.Dot(xAxis);
+    const double v2 = toSecond.Dot(yAxis);
+
+    if (std::abs(u2 - u1) < 1.0e-6 || std::abs(v2 - v1) < 1.0e-6) {
+        return false;
+    }
+
+    auto pointAt = [&](double u, double v) {
+        return origin.Translated(xAxis * u + yAxis * v);
+    };
+
+    const gp_Pnt p1 = pointAt(u1, v1);
+    const gp_Pnt p2 = pointAt(u2, v1);
+    const gp_Pnt p3 = pointAt(u2, v2);
+    const gp_Pnt p4 = pointAt(u1, v2);
+
+    BRepBuilderAPI_MakePolygon polygon;
+    polygon.Add(p1);
+    polygon.Add(p2);
+    polygon.Add(p3);
+    polygon.Add(p4);
+    polygon.Close();
+
+    if (!polygon.IsDone()) {
+        return false;
+    }
+
+    const TopoDS_Wire wire = polygon.Wire();
+    BRepBuilderAPI_MakeFace faceMaker(wire, Standard_True);
+    if (!faceMaker.IsDone()) {
+        return false;
+    }
+
+    clearSketchProfile();
+    sketchFace_ = faceMaker.Face();
+
+    sketchPresentation_ = new AIS_Shape(sketchFace_);
+    sketchPresentation_->SetColor(Quantity_NOC_ORANGE);
+    sketchPresentation_->SetTransparency(0.55);
+    sketchPresentation_->Attributes()->SetFaceBoundaryDraw(Standard_True);
+
+    context_->Display(sketchPresentation_, AIS_Shaded, 0, Standard_True);
+    context_->Activate(
+        sketchPresentation_,
+        AIS_Shape::SelectionMode(TopAbs_FACE));
+
+    selectedSketchProfile_ = true;
+    view_->Redraw();
+    return true;
+}
+
+void Viewer::clearSketchProfile()
+{
+    if (!sketchPresentation_.IsNull() && !context_.IsNull()) {
+        context_->Remove(sketchPresentation_, Standard_True);
+    }
+    sketchPresentation_.Nullify();
+    sketchFace_.Nullify();
+    selectedSketchProfile_ = false;
+}
+
+bool Viewer::canExtrudeSelection() const
+{
+    return selectedSketchProfile_ || !selectedFace_.IsNull();
+}
+
+bool Viewer::extrudeSelected(double distanceMm)
+{
+    if (std::abs(distanceMm) < 1.0e-9 || currentShape_.IsNull()) {
+        return false;
+    }
+
+    TopoDS_Face sourceFace;
+    gp_Dir normal;
+
+    if (selectedSketchProfile_ && !sketchFace_.IsNull()) {
+        sourceFace = sketchFace_;
+        normal = sketchAxes_.Direction();
+    } else if (!selectedFace_.IsNull()) {
+        sourceFace = selectedFace_;
+        try {
+            normal = outwardNormal(selectedFace_);
+        } catch (const std::exception&) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    const bool isCut = distanceMm < 0.0;
+    gp_Vec vector(normal);
+    vector *= distanceMm;
+
+    BRepPrimAPI_MakePrism prismMaker(sourceFace, vector, Standard_True);
+    if (!prismMaker.IsDone()) {
+        return false;
+    }
+
+    const TopoDS_Shape prism = prismMaker.Shape();
+    TopoDS_Shape result;
+
+    if (isCut) {
+        BRepAlgoAPI_Cut cut(currentShape_, prism);
+        cut.Build();
+        if (!cut.IsDone()) {
+            return false;
+        }
+        result = cut.Shape();
+    } else {
+        BRepAlgoAPI_Fuse fuse(currentShape_, prism);
+        fuse.Build();
+        if (!fuse.IsDone()) {
+            return false;
+        }
+        result = fuse.Shape();
+    }
+
+    if (result.IsNull()) {
+        return false;
+    }
+
+    currentShape_ = result;
+    selectedFace_.Nullify();
+    context_->ClearSelected(Standard_False);
+
+    if (selectedSketchProfile_) {
+        clearSketchProfile();
+    }
+
+    sketchMode_ = false;
+    sketchFirstPoint_.reset();
+    refreshMainPresentation();
+    return true;
 }
 
 bool Viewer::exportStep(const std::string& path) const
@@ -241,19 +544,42 @@ void Viewer::mousePressEvent(QMouseEvent* event)
 {
     lastMousePosition_ = event->position().toPoint();
 
-    if (event->button() == Qt::LeftButton && !context_.IsNull()) {
-        context_->MoveTo(
-            lastMousePosition_.x(),
-            lastMousePosition_.y(),
-            view_,
-            Standard_True);
-        context_->SelectDetected();
+    if (event->button() != Qt::LeftButton || context_.IsNull()) {
+        return;
     }
+
+    if (sketchMode_) {
+        gp_Pnt point;
+        if (!screenPointOnSketchPlane(lastMousePosition_, point)) {
+            return;
+        }
+
+        if (!sketchFirstPoint_.has_value()) {
+            sketchFirstPoint_ = point;
+        } else {
+            createRectangleSketch(*sketchFirstPoint_, point);
+            sketchFirstPoint_.reset();
+        }
+        return;
+    }
+
+    context_->MoveTo(
+        lastMousePosition_.x(),
+        lastMousePosition_.y(),
+        view_,
+        Standard_True);
+    context_->SelectDetected();
+    updateSelectedFaceFromContext();
 }
 
 void Viewer::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint position = event->position().toPoint();
+
+    if (sketchMode_) {
+        lastMousePosition_ = position;
+        return;
+    }
 
     if ((event->buttons() & Qt::LeftButton) && !view_.IsNull()) {
         const QPoint delta = position - lastMousePosition_;
