@@ -6,6 +6,6 @@
 
 class MainWindow final : public QMainWindow {
 public:
-    explicit MainWindow(const kestrel::model::BoxSpec& boxSpec,
+    explicit MainWindow(const kestrel::model::NodeSpec& model,
                         QWidget* parent = nullptr);
 };
