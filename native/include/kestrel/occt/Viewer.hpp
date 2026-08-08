@@ -7,11 +7,14 @@
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
 
+#include <kestrel/model/ModelSpec.hpp>
+
 namespace kestrel::occt {
 
 class Viewer final : public QWidget {
 public:
-    explicit Viewer(QWidget* parent = nullptr);
+    explicit Viewer(const kestrel::model::BoxSpec& boxSpec,
+                    QWidget* parent = nullptr);
     ~Viewer() override = default;
 
 protected:
@@ -24,7 +27,7 @@ protected:
 
 private:
     void initializeOcct();
-    void displayDemoBox();
+    void displayBox(const kestrel::model::BoxSpec& boxSpec);
 
     Handle(V3d_Viewer) viewer_;
     Handle(V3d_View) view_;
