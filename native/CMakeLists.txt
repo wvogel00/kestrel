@@ -1,5 +1,6 @@
 add_library(kestrel_native STATIC
     src/occt/Viewer.mm
+    src/occt/ViewerSketch.mm
     src/occt/ViewerUndo.mm
 )
 
