@@ -2,12 +2,12 @@
 
 #include <kestrel/occt/Viewer.hpp>
 
-MainWindow::MainWindow(const kestrel::model::BoxSpec& boxSpec, QWidget* parent)
+MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     : QMainWindow(parent)
 {
     setWindowTitle("Kestrel");
     resize(1200, 800);
 
-    auto* viewer = new kestrel::occt::Viewer(boxSpec, this);
+    auto* viewer = new kestrel::occt::Viewer(model, this);
     setCentralWidget(viewer);
 }
