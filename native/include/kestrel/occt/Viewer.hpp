@@ -1,9 +1,12 @@
 #pragma once
 
+#include <string>
+
 #include <QPoint>
 #include <QWidget>
 
 #include <AIS_InteractiveContext.hxx>
+#include <AIS_Shape.hxx>
 #include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
@@ -18,6 +21,10 @@ public:
                     QWidget* parent = nullptr);
     ~Viewer() override = default;
 
+    void toggleDisplayMode();
+    bool exportStep(const std::string& path) const;
+    bool exportStl(const std::string& path) const;
+
 protected:
     QPaintEngine* paintEngine() const override;
     void paintEvent(QPaintEvent* event) override;
@@ -25,18 +32,18 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
-    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void initializeOcct();
     void displayModel(const kestrel::model::NodeSpec& model);
-    void toggleDisplayMode();
     TopoDS_Shape evaluate(const kestrel::model::NodeSpec& node) const;
 
     Handle(V3d_Viewer) viewer_;
     Handle(V3d_View) view_;
     Handle(AIS_InteractiveContext) context_;
+    Handle(AIS_Shape) presentation_;
 
+    TopoDS_Shape currentShape_;
     QPoint lastMousePosition_;
     bool isShaded_ = true;
 };
