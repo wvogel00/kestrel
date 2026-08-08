@@ -8,6 +8,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QStatusBar>
 
 #include <kestrel/occt/Viewer.hpp>
 
