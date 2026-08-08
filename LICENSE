@@ -4,8 +4,10 @@ Copyright (c) 2026 Wataru Torii. All rights reserved.
 
 Kestrel, including its source code, documentation, design, and original project assets contained in this repository, is proprietary software owned by Wataru Torii, except for third-party software, libraries, components, or other materials that remain subject to their respective licenses and ownership rights.
 
-No license or permission is granted to any person or entity to use, copy, modify, merge, publish, distribute, sublicense, sell, commercially exploit, or create derivative works from Kestrel, in whole or in part, without prior written permission from Wataru Torii.
+The owner, Wataru Torii, may use, modify, reproduce, distribute, sell, license, sublicense, commercially exploit, and create derivative works from Kestrel without restriction, including use in personal business activities, paid engineering work, product development, manufacturing, consulting, and the sale or distribution of products or services created with or incorporating Kestrel.
 
-The availability of the source code in a repository does not constitute a grant of an open-source license or any other intellectual-property rights.
+No license or permission is granted to any other person or entity to use, copy, modify, merge, publish, distribute, sublicense, sell, commercially exploit, or create derivative works from Kestrel, in whole or in part, without prior written permission from Wataru Torii.
 
-Third-party dependencies used by Kestrel, including but not limited to Qt, Open CASCADE Technology (OCCT), the Glasgow Haskell Compiler (GHC), and related libraries, are governed by their own respective license terms. Nothing in this license is intended to claim ownership of those third-party works.
+The availability of the source code in a repository does not constitute a grant of an open-source license or any other intellectual-property rights to third parties.
+
+Third-party dependencies used by Kestrel, including but not limited to Qt, Open CASCADE Technology (OCCT), the Glasgow Haskell Compiler (GHC), and related libraries, are governed by their own respective license terms. Nothing in this license is intended to claim ownership of those third-party works or override their applicable license conditions.
