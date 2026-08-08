@@ -1,7 +1,5 @@
 #include <kestrel/occt/Viewer.hpp>
 
-#import <AppKit/AppKit.h>
-
 #include <QMouseEvent>
 #include <QPaintEngine>
 #include <QPaintEvent>
@@ -49,7 +47,7 @@ void Viewer::initializeOcct()
     context_ = new AIS_InteractiveContext(viewer_);
     view_ = viewer_->CreateView();
 
-    NSView* nativeView = (__bridge NSView*)reinterpret_cast<void*>(winId());
+    NSView* nativeView = reinterpret_cast<NSView*>(winId());
     const Handle(Cocoa_Window) cocoaWindow = new Cocoa_Window(nativeView);
 
     view_->SetWindow(cocoaWindow);
