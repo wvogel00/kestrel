@@ -17,6 +17,9 @@ public:
 private:
     void exportModel();
     void handleAxisShortcut(char axis);
+    void startSketch();
+    void exitSketch();
+    void extrudeSelection();
 
     kestrel::occt::Viewer* viewer_ = nullptr;
 
