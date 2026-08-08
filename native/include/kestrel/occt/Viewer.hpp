@@ -25,10 +25,12 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void initializeOcct();
     void displayModel(const kestrel::model::NodeSpec& model);
+    void toggleDisplayMode();
     TopoDS_Shape evaluate(const kestrel::model::NodeSpec& node) const;
 
     Handle(V3d_Viewer) viewer_;
@@ -36,6 +38,7 @@ private:
     Handle(AIS_InteractiveContext) context_;
 
     QPoint lastMousePosition_;
+    bool isShaded_ = true;
 };
 
 } // namespace kestrel::occt
