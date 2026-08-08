@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QDebug>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMenuBar>
@@ -21,6 +22,7 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
 
     auto* fileMenu = menuBar()->addMenu("File");
     auto* viewMenu = menuBar()->addMenu("View");
+    auto* createMenu = menuBar()->addMenu("Create");
 
     auto* exportAction = new QAction("Export...", this);
     // On macOS, Qt maps the portable Ctrl modifier to the Command key.
@@ -61,6 +63,30 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     addAxisAction("View along X axis (+X / double: -X)", Qt::Key_X, 'x');
     addAxisAction("View along Y axis (+Y / double: -Y)", Qt::Key_Y, 'y');
     addAxisAction("View along Z axis (+Z / double: -Z)", Qt::Key_Z, 'z');
+
+    auto* sketchAction = new QAction("Start Sketch on Selected Face", this);
+    sketchAction->setShortcut(QKeySequence(Qt::Key_S));
+    sketchAction->setShortcutContext(Qt::ApplicationShortcut);
+    createMenu->addAction(sketchAction);
+    addAction(sketchAction);
+    connect(sketchAction, &QAction::triggered,
+            this, &MainWindow::startSketch);
+
+    auto* extrudeAction = new QAction("Extrude Selected Face/Profile", this);
+    extrudeAction->setShortcut(QKeySequence(Qt::Key_E));
+    extrudeAction->setShortcutContext(Qt::ApplicationShortcut);
+    createMenu->addAction(extrudeAction);
+    addAction(extrudeAction);
+    connect(extrudeAction, &QAction::triggered,
+            this, &MainWindow::extrudeSelection);
+
+    auto* exitSketchAction = new QAction("Exit Sketch", this);
+    exitSketchAction->setShortcut(QKeySequence(Qt::Key_Escape));
+    exitSketchAction->setShortcutContext(Qt::ApplicationShortcut);
+    createMenu->addAction(exitSketchAction);
+    addAction(exitSketchAction);
+    connect(exitSketchAction, &QAction::triggered,
+            this, &MainWindow::exitSketch);
 }
 
 void MainWindow::handleAxisShortcut(char axis)
@@ -85,6 +111,76 @@ void MainWindow::handleAxisShortcut(char axis)
 
     lastAxisShortcut_ = axis;
     axisShortcutTimer_.restart();
+}
+
+void MainWindow::startSketch()
+{
+    qInfo() << "Kestrel shortcut: Start sketch";
+    if (!viewer_->beginSketchOnSelectedFace()) {
+        QMessageBox::information(
+            this,
+            "Start Sketch",
+            "Select a planar face first, then press S.\n\n"
+            "The current sketch prototype supports planar faces only.");
+        return;
+    }
+
+    statusBar()->showMessage(
+        "Sketch mode: click two opposite corners to create a rectangle. Press Esc to finish.");
+}
+
+void MainWindow::exitSketch()
+{
+    if (!viewer_->isSketchMode()) {
+        return;
+    }
+
+    qInfo() << "Kestrel shortcut: Exit sketch";
+    viewer_->exitSketchMode();
+    statusBar()->showMessage(
+        "Sketch finished. Select the orange profile and press E to extrude.",
+        5000);
+}
+
+void MainWindow::extrudeSelection()
+{
+    qInfo() << "Kestrel shortcut: Extrude";
+
+    if (!viewer_->canExtrudeSelection()) {
+        QMessageBox::information(
+            this,
+            "Extrude",
+            "Select an existing planar face or a sketch profile first, then press E.");
+        return;
+    }
+
+    bool accepted = false;
+    const double distanceMm = QInputDialog::getDouble(
+        this,
+        "Extrude",
+        "Distance [mm]\nPositive = add, negative = cut:",
+        10.0,
+        -100000.0,
+        100000.0,
+        3,
+        &accepted);
+
+    if (!accepted) {
+        return;
+    }
+
+    if (!viewer_->extrudeSelected(distanceMm)) {
+        QMessageBox::critical(
+            this,
+            "Extrude failed",
+            "The selected profile could not be extruded.\n"
+            "Only planar faces are supported in this prototype.");
+        return;
+    }
+
+    statusBar()->showMessage(
+        QString("Extruded %1 mm").arg(distanceMm),
+        4000);
 }
 
 void MainWindow::exportModel()
