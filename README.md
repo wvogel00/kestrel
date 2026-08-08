@@ -17,10 +17,14 @@ Kestrel can currently:
 - select planar faces
 - start a GUI sketch on a selected planar face
 - draw a rectangular sketch profile by clicking two opposite corners
+- use either existing body vertices or arbitrary free points as rectangle corners
+- highlight body vertices in sketch mode and snap exactly to them when clicked
+- select rectangle edges and assign width/height dimensions with `D`
 - leave sketch mode with `Esc`
 - extrude an existing planar face or a sketch profile
 - use positive extrusion distances to add material
 - use negative extrusion distances to cut material
+- undo geometry edits with `Cmd+Z`
 - construct boxes and cylinders from the Haskell DSL
 - translate geometry
 - perform Boolean union and cut operations
@@ -130,7 +134,7 @@ cabal run kestrel-model
 
 | Input | Action |
 |---|---|
-| Left-click | Select a face/profile |
+| Left-click | Select a face/profile/active sketch entity |
 | Left-drag | Orbit the camera when not in sketch mode |
 | Mouse wheel | Zoom |
 | `P` | Toggle shaded-with-edges / wireframe display |
@@ -141,43 +145,40 @@ cabal run kestrel-model
 | `Z` | View from +Z |
 | `Z` twice within 400 ms | View from -Z |
 | `S` | Start sketch on the selected planar face |
+| `D` | Dimension the selected rectangle edge |
 | `Esc` | Exit sketch mode |
 | `E` | Extrude the selected planar face or sketch profile |
+| `Cmd+Z` | Undo the last geometry edit |
 | `Cmd+E` | Open the STEP/STL export dialog |
-
-The same modeling/view/export commands are also available through the macOS menu bar where applicable.
 
 ## Interactive sketch workflow
 
-The first sketch implementation deliberately supports a small but useful CAD subset.
+The current sketch implementation supports an initial Fusion-like workflow for rectangular profiles.
 
 1. Click a planar face of the current solid.
 2. Press `S`.
 3. Kestrel enters sketch mode on that face.
-4. Click two opposite corners to create an axis-aligned rectangle in the selected face's local sketch plane.
-5. The resulting profile is displayed as a translucent orange face.
-6. Press `Esc` to leave sketch mode.
-7. Select the orange profile and press `E` to extrude it.
+4. Existing body vertices become optional snap targets. A vertex under the cursor is highlighted in yellow.
+5. Click either a highlighted vertex or any arbitrary point on the sketch plane for the first rectangle corner.
+6. Click either another valid vertex or an arbitrary free point for the opposite rectangle corner.
+7. The resulting profile is displayed as a translucent orange face.
+8. Click one of the rectangle edges and press `D` to enter its width/height dimension in millimetres.
+9. Press `Esc` to leave sketch mode.
+10. Select the orange profile and press `E` to extrude it.
+
+The vertex snap is optional: if no valid sketch-plane vertex is detected at the click location, Kestrel projects the cursor position onto the active sketch plane and uses that as a free point.
 
 Current sketch limitations:
 
 - planar faces only
 - rectangle profiles only
-- no geometric constraints yet
-- no dimensions/parameter editing yet
-- no line/arc/circle tools yet
+- dimensional constraints currently apply to rectangle width/height only
+- no full geometric-constraint solver yet
 - no persistent feature/history serialization yet
-
-These restrictions are intentional for the first interactive modeling slice; they establish face selection, a sketch plane, screen-to-plane projection, profile creation, and downstream extrusion before adding the full constraint system.
 
 ## Extrusion
 
-Press `E` after selecting either:
-
-- an existing planar B-Rep face, or
-- a generated sketch profile
-
-Kestrel opens a distance dialog in millimetres.
+Press `E` after selecting either an existing planar B-Rep face or a generated sketch profile. Kestrel opens a distance dialog in millimetres.
 
 - positive distance: add material using an OCCT prism + Boolean fuse
 - negative distance: remove material using an OCCT prism + Boolean cut
@@ -224,91 +225,66 @@ Install the native dependencies with Homebrew:
 brew install cmake qt opencascade
 ```
 
-GHC and Cabal are preferably managed with GHCup.
-
 ## Build
-
-Configure:
 
 ```sh
 cmake -S . -B build \
   -DCMAKE_PREFIX_PATH="$(brew --prefix qt);$(brew --prefix opencascade)"
-```
 
-Build:
-
-```sh
 cmake --build build -j
-```
-
-Run:
-
-```sh
 open build/app/kestrel.app
 ```
 
-For terminal diagnostics, run the executable directly:
+For terminal diagnostics:
 
 ```sh
 ./build/app/kestrel.app/Contents/MacOS/kestrel
 ```
 
-The current build is explicitly configured for `arm64`.
-
-## Repository layout
-
-```text
-kestrel/
-├── CMakeLists.txt
-├── cabal.project
-├── app/                    # Qt desktop application
-│   └── src/
-│       ├── main.cpp
-│       ├── MainWindow.cpp
-│       └── MainWindow.hpp
-├── core/                   # Haskell model / DSL
-│   ├── app/Main.hs
-│   ├── kestrel-core.cabal
-│   └── src/Kestrel/
-│       ├── Geometry.hs
-│       ├── Model.hs
-│       └── Units.hs
-├── native/                 # C++ / OCCT integration
-│   ├── include/kestrel/
-│   │   ├── model/ModelSpec.hpp
-│   │   └── occt/Viewer.hpp
-│   └── src/occt/Viewer.mm
-├── docs/
-└── examples/
-```
-
-`Viewer.mm` is Objective-C++ because the current macOS implementation attaches OCCT's `Cocoa_Window` to the native Qt `NSView`.
-
 ## Development milestones
 
 Completed foundations:
 
-- **M0** - Apple Silicon development environment: GHC/Cabal, CMake, Qt 6, OCCT, Apple Clang
+- **M0** - Apple Silicon development environment
 - **M1** - Qt/OCCT viewer displaying an exact B-Rep solid
 - **M2** - Haskell as the initial model source of truth through a versioned IR
-- **M3** - recursive geometry AST with primitives, transforms, Boolean operations, shaded/wireframe display, orthographic views, and STEP/STL export
-- **M4 (in progress)** - interactive face selection, planar sketch mode, rectangle profiles, and push/pull extrusion
+- **M3** - recursive geometry AST, Boolean operations, viewer controls, STEP/STL export
+- **M4 (in progress)** - interactive face selection, sketching, dimensional rectangle constraints, push/pull extrusion, and undo
 
-Planned work includes:
+## Planned work / backlog
+
+Near-term CAD features:
 
 - persistent feature/history representation shared by GUI and programmable models
-- named parameters and expressions
-- full sketch entity model: lines, arcs, circles, construction geometry
-- sketch constraints and dimensions
-- fillet and chamfer
+- full sketch entity/constraint model rather than rectangle-specific state
+- sketch line tool: endpoints may snap to existing vertices or use arbitrary free points; dimensions/constraints editable
+- sketch circle tool: center and radius points may use vertex snaps or free points; diameter/radius dimensions editable
+- on-canvas dimensional annotations and constraint symbols similar to Fusion
+- geometric constraints such as coincident, horizontal, vertical, equal, fixed, tangent, and concentric
+- fillet / chamfer tools
 - shell/thickness operations
-- revolution, sweep, and loft
+- improved menu bar and command organization
+- application/tool icons
 - stable topological references
 - edge/face/vertex selection improvements
 - measurement tools, including clicking an edge to display its true curve length
 - STEP import
+
+Manufacturing-oriented features:
+
+- configurable hole tool
+- arbitrary hole diameter entry
+- user-defined preset hole-size lists for frequently used screw holes
+- hole presets designed with meviy workflows in mind, including sizes that distinguish plain holes from tapping/thread-processing choices
 - PCB/KiCad-oriented enclosure workflows
 - sheet-metal support at a later stage
+
+Additional solid modeling:
+
+- revolution
+- sweep
+- loft
+- named parameters and expressions
 
 ## Design principles
 
