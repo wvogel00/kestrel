@@ -2,25 +2,32 @@
 
 Kestrel is an experimental programmable parametric 3D CAD system.
 
-The project is intentionally built around a Haskell model/DSL core, a Qt desktop frontend, and Open CASCADE (OCCT) as the exact B-Rep geometry kernel. The current target is Apple Silicon macOS.
+The project is built around a Haskell model/DSL core, a Qt desktop frontend, and Open CASCADE (OCCT) as the exact B-Rep geometry kernel. The current target is Apple Silicon macOS.
 
 ## Current status
 
 Kestrel can currently:
 
-- define geometry in Haskell
+- define base geometry in Haskell
 - generate a versioned JSON intermediate representation (IR)
 - evaluate that IR into exact OCCT B-Rep geometry
 - display shaded solids with visible edges or wireframe geometry
 - orbit and zoom interactively
 - switch to orthographic +/-X, +/-Y, and +/-Z views
-- construct boxes and cylinders
+- select planar faces
+- start a GUI sketch on a selected planar face
+- draw a rectangular sketch profile by clicking two opposite corners
+- leave sketch mode with `Esc`
+- extrude an existing planar face or a sketch profile
+- use positive extrusion distances to add material
+- use negative extrusion distances to cut material
+- construct boxes and cylinders from the Haskell DSL
 - translate geometry
 - perform Boolean union and cut operations
-- export the evaluated model as STEP
-- export the evaluated model as binary STL
+- export the current evaluated/edited model as STEP
+- export the current evaluated/edited model as binary STL
 
-The current example model is defined in:
+The initial programmable model is defined in:
 
 ```text
 core/app/Main.hs
@@ -38,15 +45,15 @@ Haskell DSL / AST
   Qt frontend
        |
        v
- C++ OCCT evaluator
+ C++ OCCT evaluator / interactive editor
        |
        v
  Open CASCADE B-Rep
 ```
 
-Haskell is the source of truth for model intent. The C++/Qt side does not contain the dimensions or construction sequence of the model; it parses the generated IR and recursively evaluates the geometry with OCCT.
+Haskell remains the source of truth for the initial model definition. The C++/Qt side evaluates the generated IR and currently also supports interactive in-memory editing for sketch and extrusion operations.
 
-The process boundary is intentional. A versioned IR keeps the programmable model layer independent from the GUI process and leaves room for future CLI workflows, live reload, alternate frontends, and direct FFI only where serialization would become a material performance cost.
+Important current limitation: interactive GUI edits are not yet serialized back into the Haskell AST or JSON IR. They modify the live OCCT B-Rep in memory and are preserved when exporting STEP/STL, but reopening/rebuilding the application starts again from the Haskell-generated model. Unifying programmable and GUI operations into one persistent feature/history representation is a planned architectural step.
 
 ## Haskell geometry DSL
 
@@ -103,7 +110,7 @@ During the build, CMake invokes the Haskell model generator and writes:
 build/generated/model.json
 ```
 
-The IR is currently version 2 and represents geometry as a recursive tree. For example, a Boolean cut contains its left and right operands, while a translation contains a child node.
+The IR is currently version 2 and represents geometry as a recursive tree. A Boolean cut contains its left and right operands, while a translation contains a child node.
 
 The generated IR is synchronized into the macOS application bundle at:
 
@@ -111,7 +118,7 @@ The generated IR is synchronized into the macOS application bundle at:
 build/app/kestrel.app/Contents/Resources/model.json
 ```
 
-Changing `core/app/Main.hs` and rebuilding therefore changes the model displayed by the application without changing C++ code.
+Changing `core/app/Main.hs` and rebuilding changes the initial model displayed by the application without changing C++ code.
 
 You can inspect the Haskell-generated IR directly with:
 
@@ -119,11 +126,12 @@ You can inspect the Haskell-generated IR directly with:
 cabal run kestrel-model
 ```
 
-## Viewer controls
+## Viewer and modeling controls
 
 | Input | Action |
 |---|---|
-| Left-drag | Orbit the camera |
+| Left-click | Select a face/profile |
+| Left-drag | Orbit the camera when not in sketch mode |
 | Mouse wheel | Zoom |
 | `P` | Toggle shaded-with-edges / wireframe display |
 | `X` | View from +X |
@@ -132,9 +140,49 @@ cabal run kestrel-model
 | `Y` twice within 400 ms | View from -Y |
 | `Z` | View from +Z |
 | `Z` twice within 400 ms | View from -Z |
-| `Cmd+E` | Open the export dialog |
+| `S` | Start sketch on the selected planar face |
+| `Esc` | Exit sketch mode |
+| `E` | Extrude the selected planar face or sketch profile |
+| `Cmd+E` | Open the STEP/STL export dialog |
 
-The same display and export commands are also available through the macOS menu bar.
+The same modeling/view/export commands are also available through the macOS menu bar where applicable.
+
+## Interactive sketch workflow
+
+The first sketch implementation deliberately supports a small but useful CAD subset.
+
+1. Click a planar face of the current solid.
+2. Press `S`.
+3. Kestrel enters sketch mode on that face.
+4. Click two opposite corners to create an axis-aligned rectangle in the selected face's local sketch plane.
+5. The resulting profile is displayed as a translucent orange face.
+6. Press `Esc` to leave sketch mode.
+7. Select the orange profile and press `E` to extrude it.
+
+Current sketch limitations:
+
+- planar faces only
+- rectangle profiles only
+- no geometric constraints yet
+- no dimensions/parameter editing yet
+- no line/arc/circle tools yet
+- no persistent feature/history serialization yet
+
+These restrictions are intentional for the first interactive modeling slice; they establish face selection, a sketch plane, screen-to-plane projection, profile creation, and downstream extrusion before adding the full constraint system.
+
+## Extrusion
+
+Press `E` after selecting either:
+
+- an existing planar B-Rep face, or
+- a generated sketch profile
+
+Kestrel opens a distance dialog in millimetres.
+
+- positive distance: add material using an OCCT prism + Boolean fuse
+- negative distance: remove material using an OCCT prism + Boolean cut
+
+The result becomes the live `currentShape` and is used by subsequent selection, sketching, extrusion, STEP export, and STL export.
 
 ## Export
 
@@ -145,7 +193,8 @@ Supported formats:
 ### STEP
 
 - extensions: `.step`, `.stp`
-- exports the evaluated OCCT B-Rep directly
+- exports the current OCCT B-Rep directly
+- includes live interactive extrusions performed in the current session
 - intended for CAD interchange and manufacturing workflows
 
 ### STL
@@ -153,6 +202,7 @@ Supported formats:
 - extension: `.stl`
 - exports a binary STL
 - the current shape is meshed before writing
+- includes live interactive extrusions performed in the current session
 - intended primarily for 3D-printing workflows
 
 If no extension is entered, Kestrel appends one matching the selected export format.
@@ -240,20 +290,21 @@ Completed foundations:
 
 - **M0** - Apple Silicon development environment: GHC/Cabal, CMake, Qt 6, OCCT, Apple Clang
 - **M1** - Qt/OCCT viewer displaying an exact B-Rep solid
-- **M2** - Haskell as the model source of truth through a versioned IR
+- **M2** - Haskell as the initial model source of truth through a versioned IR
 - **M3** - recursive geometry AST with primitives, transforms, Boolean operations, shaded/wireframe display, orthographic views, and STEP/STL export
+- **M4 (in progress)** - interactive face selection, planar sketch mode, rectangle profiles, and push/pull extrusion
 
 Planned work includes:
 
+- persistent feature/history representation shared by GUI and programmable models
 - named parameters and expressions
-- additional transformations and primitives
+- full sketch entity model: lines, arcs, circles, construction geometry
+- sketch constraints and dimensions
 - fillet and chamfer
 - shell/thickness operations
-- sketch representation and constraints
-- extrusion and revolution
-- feature/history representation
+- revolution, sweep, and loft
 - stable topological references
-- edge/face/vertex selection
+- edge/face/vertex selection improvements
 - measurement tools, including clicking an edge to display its true curve length
 - STEP import
 - PCB/KiCad-oriented enclosure workflows
@@ -265,8 +316,8 @@ Kestrel is not intended to reproduce every Fusion feature. The goal is a compact
 
 Key principles are:
 
-1. Haskell represents model intent and parametric structure.
+1. Haskell represents programmable model intent and parametric structure.
 2. OCCT owns exact geometric evaluation and interchange geometry.
-3. GUI operations and programmable operations should eventually operate on the same underlying model representation.
+3. GUI operations and programmable operations should converge on the same persistent feature/history representation.
 4. Manufacturing interchange should preserve B-Rep geometry through STEP whenever possible; STL is treated as a derived mesh format.
 5. Selection and topology will be designed with future measurement and feature references in mind rather than added as unrelated viewer-only behavior.
