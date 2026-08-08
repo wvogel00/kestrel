@@ -27,6 +27,15 @@ void localUv(const gp_Ax3& axes, const gp_Pnt& point, double& u, double& v)
     v = fromOrigin.Dot(gp_Vec(axes.YDirection()));
 }
 
+bool pointLiesOnSketchPlane(const gp_Ax3& axes,
+                            const gp_Pnt& point,
+                            double tolerance = 1.0e-6)
+{
+    const gp_Vec fromPlaneOrigin(axes.Location(), point);
+    const gp_Vec normal(axes.Direction());
+    return std::abs(fromPlaneOrigin.Dot(normal)) <= tolerance;
+}
+
 } // namespace
 
 void Viewer::enableSketchInteraction()
@@ -39,8 +48,9 @@ void Viewer::enableSketchInteraction()
     sketchU1_ = sketchV1_ = sketchU2_ = sketchV2_ = 0.0;
     sketchFirstPoint_.reset();
 
-    // During sketch placement, only model vertices are selectable. OCCT's
-    // dynamic local highlight makes the snap target explicit under the cursor.
+    // During sketch placement, model vertices are selectable as optional snap
+    // targets. Clicking anywhere else on the face remains valid and creates a
+    // free point by projecting the cursor onto the sketch plane.
     context_->ClearSelected(Standard_False);
     context_->Deactivate(presentation_);
     context_->Activate(presentation_, AIS_Shape::SelectionMode(TopAbs_VERTEX));
@@ -82,18 +92,32 @@ void Viewer::disableSketchInteraction()
 
 bool Viewer::snappedSketchPoint(const QPoint& point, gp_Pnt& result)
 {
-    if (context_.IsNull() || view_.IsNull()) {
+    if (context_.IsNull() || view_.IsNull() || !sketchMode_) {
         return false;
     }
 
-    context_->MoveTo(point.x(), point.y(), view_, Standard_True);
+    // Refresh OCCT detection for this exact click position. DetectedShape()
+    // must not be queried unless HasDetected() is true; otherwise stale/empty
+    // detection state can be observed after moving away from a vertex.
+    context_->MoveTo(point.x(), point.y(), view_, Standard_False);
 
-    const TopoDS_Shape detected = context_->DetectedShape();
-    if (!detected.IsNull() && detected.ShapeType() == TopAbs_VERTEX) {
-        result = BRep_Tool::Pnt(TopoDS::Vertex(detected));
-        return true;
+    if (context_->HasDetected()) {
+        const TopoDS_Shape detected = context_->DetectedShape();
+        if (!detected.IsNull() && detected.ShapeType() == TopAbs_VERTEX) {
+            const gp_Pnt vertexPoint = BRep_Tool::Pnt(TopoDS::Vertex(detected));
+
+            // Only snap to vertices that actually belong to the current sketch
+            // plane. A visible/hidden vertex on another parallel face should
+            // not pull a 2-D sketch point out of plane.
+            if (pointLiesOnSketchPlane(sketchAxes_, vertexPoint)) {
+                result = vertexPoint;
+                return true;
+            }
+        }
     }
 
+    // No valid vertex snap target: the click is still valid. Project the
+    // cursor ray onto the sketch plane and use that as an unconstrained point.
     return screenPointOnSketchPlane(point, result);
 }
 
@@ -115,10 +139,11 @@ bool Viewer::handleSketchMousePress(const QPoint& point)
         return false;
     }
 
-    context_->MoveTo(point.x(), point.y(), view_, Standard_True);
-
     if (hasSketchRectangle_ && !sketchPresentation_.IsNull()) {
-        context_->SelectDetected();
+        context_->MoveTo(point.x(), point.y(), view_, Standard_True);
+        if (context_->HasDetected()) {
+            context_->SelectDetected();
+        }
         return true;
     }
 
