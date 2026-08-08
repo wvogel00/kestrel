@@ -1,6 +1,7 @@
 #include "MainWindow.hpp"
 
 #include <QAction>
+#include <QDebug>
 #include <QFileDialog>
 #include <QKeySequence>
 #include <QMenu>
@@ -22,20 +23,25 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     auto* viewMenu = menuBar()->addMenu("View");
 
     auto* exportAction = new QAction("Export...", this);
-    exportAction->setShortcut(QKeySequence("Meta+E"));
-    exportAction->setShortcutContext(Qt::WindowShortcut);
+    // On macOS, Qt maps the portable Ctrl modifier to the Command key.
+    exportAction->setShortcut(QKeySequence("Ctrl+E"));
+    exportAction->setShortcutContext(Qt::ApplicationShortcut);
     fileMenu->addAction(exportAction);
     addAction(exportAction);
-    connect(exportAction, &QAction::triggered,
-            this, &MainWindow::exportModel);
+    connect(exportAction, &QAction::triggered, this, [this] {
+        qInfo() << "Kestrel shortcut: Export";
+        exportModel();
+    });
 
     auto* displayModeAction = new QAction("Toggle Wireframe/Shaded", this);
     displayModeAction->setShortcut(QKeySequence(Qt::Key_P));
-    displayModeAction->setShortcutContext(Qt::WindowShortcut);
+    displayModeAction->setShortcutContext(Qt::ApplicationShortcut);
     viewMenu->addAction(displayModeAction);
     addAction(displayModeAction);
-    connect(displayModeAction, &QAction::triggered,
-            viewer_, &kestrel::occt::Viewer::toggleDisplayMode);
+    connect(displayModeAction, &QAction::triggered, this, [this] {
+        qInfo() << "Kestrel shortcut: Toggle display mode";
+        viewer_->toggleDisplayMode();
+    });
 }
 
 void MainWindow::exportModel()
