@@ -25,6 +25,7 @@
 #include <STEPControl_StepModelType.hxx>
 #include <STEPControl_Writer.hxx>
 #include <StlAPI_Writer.hxx>
+#include <V3d_TypeOfOrientation.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -158,6 +159,36 @@ void Viewer::toggleDisplayMode()
     view_->Redraw();
 }
 
+void Viewer::setAxisView(char axis, bool positive)
+{
+    if (view_.IsNull()) {
+        return;
+    }
+
+    V3d_TypeOfOrientation orientation;
+    switch (axis) {
+    case 'x':
+    case 'X':
+        orientation = positive ? V3d_Xpos : V3d_Xneg;
+        break;
+    case 'y':
+    case 'Y':
+        orientation = positive ? V3d_Ypos : V3d_Yneg;
+        break;
+    case 'z':
+    case 'Z':
+        orientation = positive ? V3d_Zpos : V3d_Zneg;
+        break;
+    default:
+        return;
+    }
+
+    view_->SetProj(orientation);
+    view_->FitAll();
+    view_->ZFitAll();
+    view_->Redraw();
+}
+
 bool Viewer::exportStep(const std::string& path) const
 {
     if (currentShape_.IsNull()) {
@@ -178,8 +209,6 @@ bool Viewer::exportStl(const std::string& path) const
         return false;
     }
 
-    // Mesh the exact OCCT result before writing STL.
-    // Deflection values are intentionally conservative for the current prototype.
     BRepMesh_IncrementalMesh mesh(currentShape_, 0.1, Standard_False, 0.5, Standard_True);
     mesh.Perform();
     if (!mesh.IsDone()) {
