@@ -14,7 +14,7 @@
 
 namespace kestrel::occt {
 
-Viewer::Viewer(QWidget* parent)
+Viewer::Viewer(const kestrel::model::BoxSpec& boxSpec, QWidget* parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_NativeWindow);
@@ -24,7 +24,7 @@ Viewer::Viewer(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
 
     initializeOcct();
-    displayDemoBox();
+    displayBox(boxSpec);
 }
 
 QPaintEngine* Viewer::paintEngine() const
@@ -59,9 +59,13 @@ void Viewer::initializeOcct()
     view_->MustBeResized();
 }
 
-void Viewer::displayDemoBox()
+void Viewer::displayBox(const kestrel::model::BoxSpec& boxSpec)
 {
-    const TopoDS_Shape box = BRepPrimAPI_MakeBox(50.0, 30.0, 20.0).Shape();
+    const TopoDS_Shape box = BRepPrimAPI_MakeBox(
+        boxSpec.widthMm,
+        boxSpec.depthMm,
+        boxSpec.heightMm).Shape();
+
     const Handle(AIS_Shape) presentation = new AIS_Shape(box);
 
     context_->Display(presentation, Standard_True);
