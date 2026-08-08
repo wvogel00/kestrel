@@ -22,6 +22,7 @@ public:
     ~Viewer() override = default;
 
     void toggleDisplayMode();
+    void setAxisView(char axis, bool positive);
     bool exportStep(const std::string& path) const;
     bool exportStl(const std::string& path) const;
 
