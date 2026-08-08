@@ -2,7 +2,6 @@
 
 #include <stdexcept>
 
-#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPaintEngine>
 #include <QPaintEvent>
@@ -15,12 +14,17 @@
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
+#include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <Cocoa_Window.hxx>
+#include <IFSelect_ReturnStatus.hxx>
 #include <OpenGl_GraphicDriver.hxx>
 #include <Prs3d_Drawer.hxx>
 #include <Quantity_NameOfColor.hxx>
+#include <STEPControl_StepModelType.hxx>
+#include <STEPControl_Writer.hxx>
+#include <StlAPI_Writer.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -125,19 +129,16 @@ TopoDS_Shape Viewer::evaluate(const kestrel::model::NodeSpec& node) const
 
 void Viewer::displayModel(const kestrel::model::NodeSpec& model)
 {
-    const TopoDS_Shape shape = evaluate(model);
-    if (shape.IsNull()) {
+    currentShape_ = evaluate(model);
+    if (currentShape_.IsNull()) {
         throw std::runtime_error("OCCT produced a null shape");
     }
 
-    const Handle(AIS_Shape) presentation = new AIS_Shape(shape);
+    presentation_ = new AIS_Shape(currentShape_);
+    presentation_->SetColor(Quantity_NOC_LIGHTSTEELBLUE);
+    presentation_->Attributes()->SetFaceBoundaryDraw(Standard_True);
 
-    // CAD-style shaded presentation: filled faces with visible boundaries.
-    presentation->SetDisplayMode(AIS_Shaded);
-    presentation->SetColor(Quantity_NOC_LIGHTSTEELBLUE);
-    presentation->Attributes()->SetFaceBoundaryDraw(Standard_True);
-
-    context_->Display(presentation, Standard_True);
+    context_->Display(presentation_, AIS_Shaded, 0, Standard_True);
     view_->FitAll();
     view_->ZFitAll();
     view_->Redraw();
@@ -145,15 +146,48 @@ void Viewer::displayModel(const kestrel::model::NodeSpec& model)
 
 void Viewer::toggleDisplayMode()
 {
-    if (context_.IsNull() || view_.IsNull()) {
+    if (context_.IsNull() || view_.IsNull() || presentation_.IsNull()) {
         return;
     }
 
     isShaded_ = !isShaded_;
     context_->SetDisplayMode(
+        presentation_,
         isShaded_ ? AIS_Shaded : AIS_WireFrame,
         Standard_True);
     view_->Redraw();
+}
+
+bool Viewer::exportStep(const std::string& path) const
+{
+    if (currentShape_.IsNull()) {
+        return false;
+    }
+
+    STEPControl_Writer writer;
+    if (writer.Transfer(currentShape_, STEPControl_AsIs) != IFSelect_RetDone) {
+        return false;
+    }
+
+    return writer.Write(path.c_str()) == IFSelect_RetDone;
+}
+
+bool Viewer::exportStl(const std::string& path) const
+{
+    if (currentShape_.IsNull()) {
+        return false;
+    }
+
+    // Mesh the exact OCCT result before writing STL.
+    // Deflection values are intentionally conservative for the current prototype.
+    BRepMesh_IncrementalMesh mesh(currentShape_, 0.1, Standard_False, 0.5, Standard_True);
+    mesh.Perform();
+    if (!mesh.IsDone()) {
+        return false;
+    }
+
+    StlAPI_Writer writer;
+    return writer.Write(currentShape_, path.c_str());
 }
 
 void Viewer::paintEvent(QPaintEvent* event)
@@ -176,7 +210,6 @@ void Viewer::resizeEvent(QResizeEvent* event)
 void Viewer::mousePressEvent(QMouseEvent* event)
 {
     lastMousePosition_ = event->position().toPoint();
-    setFocus(Qt::MouseFocusReason);
 
     if (event->button() == Qt::LeftButton && !context_.IsNull()) {
         context_->MoveTo(
@@ -215,17 +248,6 @@ void Viewer::wheelEvent(QWheelEvent* event)
     const int delta = event->angleDelta().y();
     const double factor = delta > 0 ? 0.8 : 1.25;
     view_->SetZoom(factor, Standard_True);
-}
-
-void Viewer::keyPressEvent(QKeyEvent* event)
-{
-    if (event->key() == Qt::Key_P && !event->isAutoRepeat()) {
-        toggleDisplayMode();
-        event->accept();
-        return;
-    }
-
-    QWidget::keyPressEvent(event);
 }
 
 } // namespace kestrel::occt
