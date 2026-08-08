@@ -1,5 +1,7 @@
 #include <kestrel/occt/Viewer.hpp>
 
+#include <stdexcept>
+
 #include <QMouseEvent>
 #include <QPaintEngine>
 #include <QPaintEvent>
@@ -8,13 +10,19 @@
 
 #include <AIS_Shape.hxx>
 #include <Aspect_DisplayConnection.hxx>
+#include <BRepAlgoAPI_Cut.hxx>
+#include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
+#include <BRepPrimAPI_MakeCylinder.hxx>
 #include <Cocoa_Window.hxx>
 #include <OpenGl_GraphicDriver.hxx>
+#include <gp_Trsf.hxx>
+#include <gp_Vec.hxx>
 
 namespace kestrel::occt {
 
-Viewer::Viewer(const kestrel::model::BoxSpec& boxSpec, QWidget* parent)
+Viewer::Viewer(const kestrel::model::NodeSpec& model, QWidget* parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_NativeWindow);
@@ -24,7 +32,7 @@ Viewer::Viewer(const kestrel::model::BoxSpec& boxSpec, QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
 
     initializeOcct();
-    displayBox(boxSpec);
+    displayModel(model);
 }
 
 QPaintEngine* Viewer::paintEngine() const
@@ -59,15 +67,64 @@ void Viewer::initializeOcct()
     view_->MustBeResized();
 }
 
-void Viewer::displayBox(const kestrel::model::BoxSpec& boxSpec)
+TopoDS_Shape Viewer::evaluate(const kestrel::model::NodeSpec& node) const
 {
-    const TopoDS_Shape box = BRepPrimAPI_MakeBox(
-        boxSpec.widthMm,
-        boxSpec.depthMm,
-        boxSpec.heightMm).Shape();
+    using kestrel::model::NodeType;
 
-    const Handle(AIS_Shape) presentation = new AIS_Shape(box);
+    switch (node.type) {
+    case NodeType::Box:
+        return BRepPrimAPI_MakeBox(
+            node.widthMm,
+            node.depthMm,
+            node.heightMm).Shape();
 
+    case NodeType::Cylinder:
+        return BRepPrimAPI_MakeCylinder(
+            node.radiusMm,
+            node.heightMm).Shape();
+
+    case NodeType::Translate: {
+        if (!node.child) {
+            throw std::runtime_error("Translate node is missing child geometry");
+        }
+
+        gp_Trsf transform;
+        transform.SetTranslation(gp_Vec(node.xMm, node.yMm, node.zMm));
+
+        return BRepBuilderAPI_Transform(
+            evaluate(*node.child),
+            transform,
+            Standard_True).Shape();
+    }
+
+    case NodeType::Union:
+        if (!node.left || !node.right) {
+            throw std::runtime_error("Union node is missing an operand");
+        }
+        return BRepAlgoAPI_Fuse(
+            evaluate(*node.left),
+            evaluate(*node.right)).Shape();
+
+    case NodeType::Cut:
+        if (!node.left || !node.right) {
+            throw std::runtime_error("Cut node is missing an operand");
+        }
+        return BRepAlgoAPI_Cut(
+            evaluate(*node.left),
+            evaluate(*node.right)).Shape();
+    }
+
+    throw std::runtime_error("Unknown Kestrel geometry node");
+}
+
+void Viewer::displayModel(const kestrel::model::NodeSpec& model)
+{
+    const TopoDS_Shape shape = evaluate(model);
+    if (shape.IsNull()) {
+        throw std::runtime_error("OCCT produced a null shape");
+    }
+
+    const Handle(AIS_Shape) presentation = new AIS_Shape(shape);
     context_->Display(presentation, Standard_True);
     view_->FitAll();
     view_->ZFitAll();
