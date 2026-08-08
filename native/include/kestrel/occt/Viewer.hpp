@@ -4,6 +4,7 @@
 #include <QWidget>
 
 #include <AIS_InteractiveContext.hxx>
+#include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
 
@@ -13,7 +14,7 @@ namespace kestrel::occt {
 
 class Viewer final : public QWidget {
 public:
-    explicit Viewer(const kestrel::model::BoxSpec& boxSpec,
+    explicit Viewer(const kestrel::model::NodeSpec& model,
                     QWidget* parent = nullptr);
     ~Viewer() override = default;
 
@@ -27,7 +28,8 @@ protected:
 
 private:
     void initializeOcct();
-    void displayBox(const kestrel::model::BoxSpec& boxSpec);
+    void displayModel(const kestrel::model::NodeSpec& model);
+    TopoDS_Shape evaluate(const kestrel::model::NodeSpec& node) const;
 
     Handle(V3d_Viewer) viewer_;
     Handle(V3d_View) view_;
