@@ -42,6 +42,49 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
         qInfo() << "Kestrel shortcut: Toggle display mode";
         viewer_->toggleDisplayMode();
     });
+
+    viewMenu->addSeparator();
+
+    auto addAxisAction = [this, viewMenu](const QString& title,
+                                          Qt::Key key,
+                                          char axis) {
+        auto* action = new QAction(title, this);
+        action->setShortcut(QKeySequence(key));
+        action->setShortcutContext(Qt::ApplicationShortcut);
+        viewMenu->addAction(action);
+        addAction(action);
+        connect(action, &QAction::triggered, this, [this, axis] {
+            handleAxisShortcut(axis);
+        });
+    };
+
+    addAxisAction("View along X axis (+X / double: -X)", Qt::Key_X, 'x');
+    addAxisAction("View along Y axis (+Y / double: -Y)", Qt::Key_Y, 'y');
+    addAxisAction("View along Z axis (+Z / double: -Z)", Qt::Key_Z, 'z');
+}
+
+void MainWindow::handleAxisShortcut(char axis)
+{
+    const bool isDoublePress =
+        axisShortcutTimer_.isValid()
+        && lastAxisShortcut_ == axis
+        && axisShortcutTimer_.elapsed() <= kAxisDoublePressMs;
+
+    if (isDoublePress) {
+        qInfo() << "Kestrel view:" << axis << "negative";
+        viewer_->setAxisView(axis, false);
+
+        // Consume the pair so a third press starts a new +axis sequence.
+        axisShortcutTimer_.invalidate();
+        lastAxisShortcut_ = '\0';
+        return;
+    }
+
+    qInfo() << "Kestrel view:" << axis << "positive";
+    viewer_->setAxisView(axis, true);
+
+    lastAxisShortcut_ = axis;
+    axisShortcutTimer_.restart();
 }
 
 void MainWindow::exportModel()
