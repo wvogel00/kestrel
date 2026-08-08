@@ -4,24 +4,28 @@ Kestrel is an experimental programmable parametric 3D CAD system.
 
 The long-term architecture combines a Haskell model/DSL core with a Qt frontend and Open CASCADE (OCCT) geometry kernel.
 
-## Current milestone: M1
+## Current milestone: M2
 
-M1 proves the native rendering path on Apple Silicon macOS:
+M2 makes Haskell the source of truth for the first CAD model:
 
-- Qt 6 application shell
-- Open CASCADE 3D viewer embedded in a Qt widget
-- 50 x 30 x 20 mm OCCT demo box
-- basic orbit, zoom, hover and selection
+- the model is defined as a Haskell AST
+- Haskell emits a small versioned JSON IR
+- the Qt application loads that IR
+- OCCT constructs the corresponding B-Rep box
+- orbit, zoom, hover and selection remain available
+
+The current model is defined in `core/app/Main.hs`.
 
 ## Requirements (macOS)
 
 - Apple Silicon macOS
 - Xcode / Apple Clang
 - CMake
+- GHC + Cabal
 - Qt 6
 - Open CASCADE 7.9+
 
-With Homebrew:
+With Homebrew for the native dependencies:
 
 ```sh
 brew install cmake qt opencascade
@@ -37,24 +41,40 @@ cmake --build build -j
 open build/app/kestrel.app
 ```
 
-If CMake cannot locate Open CASCADE, provide its config directory explicitly:
+During the build, CMake invokes `cabal run kestrel-model` and generates:
 
-```sh
-find "$(brew --prefix opencascade)" -name OpenCASCADEConfig.cmake
+```text
+build/generated/model.json
 ```
 
-and pass the containing directory with `-DOpenCASCADE_DIR=...`.
+The generated IR is copied into the application bundle at:
+
+```text
+build/app/kestrel.app/Contents/Resources/model.json
+```
+
+You can also inspect the Haskell output directly:
+
+```sh
+cabal run kestrel-model
+```
 
 ## Architecture
 
 ```text
-Haskell core / DSL        Qt frontend
-        |                     |
-        +----------+----------+
-                   |
-              native C++
-                   |
-            Open CASCADE
+Haskell DSL / AST
+       |
+       v
+ versioned JSON IR
+       |
+       v
+  Qt frontend
+       |
+       v
+  native C++ / OCCT
+       |
+       v
+ Open CASCADE B-Rep
 ```
 
-The Haskell core is intentionally not connected during M1. It will be introduced after the Qt/OCCT rendering path is proven.
+The process boundary is intentional: the versioned IR keeps the Haskell model layer independent from the GUI process and will support CLI use, model regeneration, and later live reload. A direct FFI can still be added for operations where avoiding serialization is materially useful.
