@@ -169,6 +169,7 @@ void Viewer::displayModel(const kestrel::model::NodeSpec& model)
     presentation_->Attributes()->SetFaceBoundaryDraw(Standard_True);
 
     context_->Display(presentation_, AIS_Shaded, 0, Standard_True);
+    context_->Deactivate(presentation_);
     context_->Activate(presentation_, AIS_Shape::SelectionMode(TopAbs_FACE));
 
     view_->FitAll();
@@ -196,6 +197,7 @@ void Viewer::refreshMainPresentation()
             Standard_True);
     }
 
+    context_->Deactivate(presentation_);
     context_->Activate(presentation_, AIS_Shape::SelectionMode(TopAbs_FACE));
     view_->FitAll();
     view_->ZFitAll();
@@ -255,6 +257,11 @@ bool Viewer::updateSelectedFaceFromContext()
         return false;
     }
 
+    context_->InitSelected();
+    if (!context_->MoreSelected()) {
+        return false;
+    }
+
     const Handle(AIS_InteractiveObject) selectedObject =
         context_->SelectedInteractive();
 
@@ -275,10 +282,8 @@ bool Viewer::updateSelectedFaceFromContext()
 
 bool Viewer::beginSketchOnSelectedFace()
 {
-    if (selectedFace_.IsNull()) {
-        if (!updateSelectedFaceFromContext() || selectedFace_.IsNull()) {
-            return false;
-        }
+    if (!updateSelectedFaceFromContext() || selectedFace_.IsNull()) {
+        return false;
     }
 
     BRepAdaptor_Surface surface(selectedFace_, Standard_True);
@@ -295,7 +300,6 @@ bool Viewer::beginSketchOnSelectedFace()
     sketchFirstPoint_.reset();
     sketchMode_ = true;
 
-    // Keep the model visible but make sketch input unambiguous.
     context_->ClearSelected(Standard_True);
     view_->Redraw();
     return true;
@@ -399,6 +403,7 @@ bool Viewer::createRectangleSketch(const gp_Pnt& first, const gp_Pnt& second)
     sketchPresentation_->Attributes()->SetFaceBoundaryDraw(Standard_True);
 
     context_->Display(sketchPresentation_, AIS_Shaded, 0, Standard_True);
+    context_->Deactivate(sketchPresentation_);
     context_->Activate(
         sketchPresentation_,
         AIS_Shape::SelectionMode(TopAbs_FACE));
@@ -418,14 +423,18 @@ void Viewer::clearSketchProfile()
     selectedSketchProfile_ = false;
 }
 
-bool Viewer::canExtrudeSelection() const
+bool Viewer::canExtrudeSelection()
 {
-    return selectedSketchProfile_ || !selectedFace_.IsNull();
+    return updateSelectedFaceFromContext();
 }
 
 bool Viewer::extrudeSelected(double distanceMm)
 {
     if (std::abs(distanceMm) < 1.0e-9 || currentShape_.IsNull()) {
+        return false;
+    }
+
+    if (!updateSelectedFaceFromContext()) {
         return false;
     }
 
@@ -544,7 +553,7 @@ void Viewer::mousePressEvent(QMouseEvent* event)
 {
     lastMousePosition_ = event->position().toPoint();
 
-    if (event->button() != Qt::LeftButton || context_.IsNull()) {
+    if (event->button() != Qt::LeftButton) {
         return;
     }
 
@@ -556,39 +565,40 @@ void Viewer::mousePressEvent(QMouseEvent* event)
 
         if (!sketchFirstPoint_.has_value()) {
             sketchFirstPoint_ = point;
-        } else {
-            createRectangleSketch(*sketchFirstPoint_, point);
+            return;
+        }
+
+        if (createRectangleSketch(*sketchFirstPoint_, point)) {
             sketchFirstPoint_.reset();
         }
         return;
     }
 
-    context_->MoveTo(
-        lastMousePosition_.x(),
-        lastMousePosition_.y(),
-        view_,
-        Standard_True);
-    context_->SelectDetected();
-    updateSelectedFaceFromContext();
+    if (!context_.IsNull()) {
+        context_->MoveTo(
+            lastMousePosition_.x(),
+            lastMousePosition_.y(),
+            view_,
+            Standard_True);
+        context_->SelectDetected();
+        updateSelectedFaceFromContext();
+    }
 }
 
 void Viewer::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint position = event->position().toPoint();
 
-    if (sketchMode_) {
-        lastMousePosition_ = position;
-        return;
-    }
-
-    if ((event->buttons() & Qt::LeftButton) && !view_.IsNull()) {
+    if (!sketchMode_
+        && (event->buttons() & Qt::LeftButton)
+        && !view_.IsNull()) {
         const QPoint delta = position - lastMousePosition_;
         view_->Rotate(
             delta.y() * 0.01,
             delta.x() * 0.01,
             0.0,
             Standard_True);
-    } else if (!context_.IsNull()) {
+    } else if (!sketchMode_ && !context_.IsNull()) {
         context_->MoveTo(position.x(), position.y(), view_, Standard_True);
     }
 
