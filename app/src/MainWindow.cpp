@@ -2,12 +2,14 @@
 
 #include <QAction>
 #include <QDebug>
+#include <QEvent>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QStatusBar>
 
 #include <kestrel/occt/Viewer.hpp>
@@ -20,6 +22,7 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
 
     viewer_ = new kestrel::occt::Viewer(model, this);
     setCentralWidget(viewer_);
+    viewer_->installEventFilter(this);
 
     auto* fileMenu = menuBar()->addMenu("File");
     auto* editMenu = menuBar()->addMenu("Edit");
@@ -87,6 +90,14 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     connect(sketchAction, &QAction::triggered,
             this, &MainWindow::startSketch);
 
+    auto* dimensionAction = new QAction("Sketch Dimension", this);
+    dimensionAction->setShortcut(QKeySequence(Qt::Key_D));
+    dimensionAction->setShortcutContext(Qt::ApplicationShortcut);
+    createMenu->addAction(dimensionAction);
+    addAction(dimensionAction);
+    connect(dimensionAction, &QAction::triggered,
+            this, &MainWindow::dimensionSelection);
+
     auto* extrudeAction = new QAction("Extrude Selected Face/Profile", this);
     extrudeAction->setShortcut(QKeySequence(Qt::Key_E));
     extrudeAction->setShortcutContext(Qt::ApplicationShortcut);
@@ -102,6 +113,27 @@ MainWindow::MainWindow(const kestrel::model::NodeSpec& model, QWidget* parent)
     addAction(exitSketchAction);
     connect(exitSketchAction, &QAction::triggered,
             this, &MainWindow::exitSketch);
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == viewer_ && viewer_->isSketchMode()) {
+        if (event->type() == QEvent::MouseMove) {
+            const auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            viewer_->handleSketchMouseMove(mouseEvent->position().toPoint());
+            return true;
+        }
+
+        if (event->type() == QEvent::MouseButtonPress) {
+            const auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton) {
+                viewer_->handleSketchMousePress(mouseEvent->position().toPoint());
+                return true;
+            }
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::handleAxisShortcut(char axis)
@@ -138,8 +170,9 @@ void MainWindow::startSketch()
         return;
     }
 
+    viewer_->enableSketchInteraction();
     statusBar()->showMessage(
-        "Sketch mode: click two opposite corners to create a rectangle. Press Esc to finish.");
+        "Sketch: hover a body vertex to snap (yellow), then click two opposite rectangle corners. Select a sketch edge and press D to dimension. Esc finishes.");
 }
 
 void MainWindow::exitSketch()
@@ -149,10 +182,60 @@ void MainWindow::exitSketch()
     }
 
     qInfo() << "Kestrel shortcut: Exit sketch";
+    viewer_->disableSketchInteraction();
     viewer_->exitSketchMode();
     statusBar()->showMessage(
         "Sketch finished. Select the orange profile and press E to extrude.",
         5000);
+}
+
+void MainWindow::dimensionSelection()
+{
+    qInfo() << "Kestrel shortcut: Sketch dimension";
+
+    if (!viewer_->isSketchMode()) {
+        QMessageBox::information(
+            this,
+            "Sketch Dimension",
+            "Dimension constraints are available while editing a sketch.");
+        return;
+    }
+
+    const double currentLength = viewer_->selectedSketchEdgeLength();
+    if (currentLength <= 0.0) {
+        QMessageBox::information(
+            this,
+            "Sketch Dimension",
+            "Select one of the orange rectangle edges, then press D.");
+        return;
+    }
+
+    bool accepted = false;
+    const double lengthMm = QInputDialog::getDouble(
+        this,
+        "Sketch Dimension",
+        "Length [mm]:",
+        currentLength,
+        0.001,
+        100000.0,
+        3,
+        &accepted);
+
+    if (!accepted) {
+        return;
+    }
+
+    if (!viewer_->setSelectedSketchDimension(lengthMm)) {
+        QMessageBox::critical(
+            this,
+            "Sketch Dimension",
+            "Could not apply the dimension constraint to the selected edge.");
+        return;
+    }
+
+    statusBar()->showMessage(
+        QString("Sketch dimension constrained to %1 mm").arg(lengthMm),
+        4000);
 }
 
 void MainWindow::extrudeSelection()
