@@ -14,11 +14,15 @@ public:
     explicit MainWindow(const kestrel::model::NodeSpec& model,
                         QWidget* parent = nullptr);
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     void exportModel();
     void handleAxisShortcut(char axis);
     void startSketch();
     void exitSketch();
+    void dimensionSelection();
     void extrudeSelection();
 
     kestrel::occt::Viewer* viewer_ = nullptr;
